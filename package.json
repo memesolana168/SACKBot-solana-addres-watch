@@ -1,0 +1,16 @@
+{
+  "name": "solana-monitor-bot",
+  "version": "1.0.0",
+  "description": "Monitor specific Solana addresses and send alerts to Telegram",
+  "main": "monitor.js",
+  "scripts": {
+    "start": "node monitor.js"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.91.0",
+    "@solana/spl-token": "^0.4.1",
+    "node-telegram-bot-api": "^0.65.1",
+    "dotenv": "^16.4.5",
+    "bs58": "^5.0.0"
+  }
+}
