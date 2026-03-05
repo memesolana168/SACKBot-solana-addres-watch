@@ -29,10 +29,16 @@ module.exports = {
             minUSD: 0,
         },
         {
-            name: '📈 SACK 交易 (大額)',
+            name: '📈 SACK 交易 ',
             address: 'Sack7bZAMtwVU1ceMwV6V293GXCyBtkhQNYYUGAWMqu',
             type: 'SWAP',
             minUSD: 0, // 只要改這裡：美金門檻
-        }
+        },
+        {
+            name: '📈 GEOD 交易 (大額)',
+            address: '5sgFJxh1oewHjBvnkRY9qMau8pCLDfxCzFjCMJAGKke5',
+            type: 'SOL_TRANSFER',
+            minUSD: 100, // 只要改這裡：美金門檻
+        },
     ]
 };
