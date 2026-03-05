@@ -131,20 +131,22 @@ class MonitorEngine {
             const pubKey = new PublicKey(task.address);
             const lastSig = StateService.data[task.address];
             
+            // 增加 limit 到 100，以應對 GitHub Actions 可能長達一小時的延遲
             const signatures = await connection.getSignaturesForAddress(pubKey, { 
-                limit: 10,
+                limit: 100,
                 until: lastSig
             });
 
             if (signatures.length === 0) return;
 
-            // 更新最後處理的簽名
+            // 更新最後處理的簽名 (抓取到的第一筆是最新的)
             StateService.data[task.address] = signatures[0].signature;
             this.newSignaturesFound = true;
 
-            const filteredSigs = signatures.reverse(); // 由舊到新處理
+            // 從舊到新處理，確保通知順序正確
+            const filteredSigs = signatures.reverse(); 
 
-            console.log(`[Task] ${task.name} 檢測到 ${filteredSigs.length} 筆新交易`);
+            console.log(`[Task] ${task.name} 檢測到 ${filteredSigs.length} 筆新交易 (已追蹤至 ${signatures[0].signature.slice(0, 8)}...)`);
 
             for (const sigInfo of filteredSigs) {
                 await this.handleTransaction(task, sigInfo.signature);

@@ -5,8 +5,13 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
+# 防止多個工作流同時執行，避免 Git 衝突與重複通知
+concurrency:
+  group: solana-monitor
+  cancel-in-progress: false 
+
 permissions:
-  contents: write # 必須有寫入權限才能更新 state.json
+  contents: write
 
 jobs:
   monitor:
@@ -14,6 +19,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 獲取完整歷史以利 rebase
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -37,5 +44,12 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add data/state.json
-          # 只有當檔案有變動時才 commit，避免報錯
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: update monitor state [skip ci]" && git push)
+          # 只有當檔案有變動時才 commit
+          if ! git diff --quiet --staged data/state.json; then
+            git commit -m "chore: update monitor state [skip ci]"
+            # 使用 rebase 確保 push 成功，解決多工作流競爭問題
+            git pull --rebase origin master
+            git push origin master
+          else
+            echo "No changes in state.json"
+          fi
