@@ -1,6 +1,6 @@
 # 🚀 SACKbot - Smart Solana Monitor (v2.2)
 
-English | [繁體中文](./README.md)
+English | [繁體中文](./README.MD)
 
 SACKbot is a powerful and easy-to-use Solana blockchain monitoring tool. It tracks SOL movement, token distribution, and DEX trades (Buy/Sell) for specific wallet addresses and sends real-time alerts to your Telegram channel.
 
