@@ -35,6 +35,14 @@ tasks: [
 ]
 ```
 
+#### 📌 Monitor Modes (`type`) Explained:
+| Mode | Description | Typical Use Case |
+| :--- | :--- | :--- |
+| `SOL_INFLOW` | **Only Incoming**. Notifies only when the address receives SOL. | Treasury, Payment addresses. |
+| `SOL_TRANSFER` | **All Transfers**. Notifies on both incoming and outgoing SOL. | Whale tracking, Personal wallet alerts. |
+| `TOKEN_OUTFLOW` | **Token Distribution**. Tracks outgoing SPL tokens from this address. | Minter wallet monitoring. |
+| `SWAP` | **Token Trades**. Tracks Buy/Sell on DEX (Raydium, etc.) | **Address must be the Token Contract Address**. |
+
 ### Step 3: Set Secrets (Telegram & RPC)
 Go to your GitHub Repository -> **Settings** -> **Secrets and variables** -> **Actions**, and add these three **Repository secrets**:
 
