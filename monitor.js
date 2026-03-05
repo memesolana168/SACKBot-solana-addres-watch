@@ -1,17 +1,20 @@
 /**
- * SACKbot - Solana 監控機器人 (GitHub Actions 相容版)
- * Mentor 觀點：架構應靈活適應環境
+ * SACKbot - Solana 監控機器人 (GitHub Actions + Git-as-DB 版)
+ * Mentor 觀點：利用 Git 本身來存放狀態，極致的低成本解決方案
  */
 
 const { Connection, PublicKey } = require('@solana/web3.js');
 const TelegramBot = require('node-telegram-bot-api');
 const fetch = require('node-fetch');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
-const CONFIG = require('./config'); // 引入集中配置
+const CONFIG = require('./config');
 
 // ================= 環境設定 =================
 
-const IS_ACTIONS = process.env.GITHUB_ACTIONS === 'true'; // 是否在 GitHub Actions 運行
+const STATE_FILE = path.join(__dirname, 'data', 'state.json');
+const IS_ACTIONS = process.env.GITHUB_ACTIONS === 'true';
 const ENV = {
     rpcUrl: process.env.RPC_URL || 'https://api.mainnet-beta.solana.com',
     tgToken: process.env.TG_BOT_TOKEN,
@@ -23,6 +26,30 @@ const tgBot = new TelegramBot(ENV.tgToken);
 const connection = new Connection(ENV.rpcUrl, 'confirmed');
 
 // ================= 服務模組 =================
+
+const StateService = {
+    data: {},
+    load() {
+        try {
+            if (fs.existsSync(STATE_FILE)) {
+                this.data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+            }
+        } catch (e) {
+            console.error('[State] 讀取失敗', e.message);
+        }
+    },
+    save() {
+        try {
+            if (!fs.existsSync(path.dirname(STATE_FILE))) {
+                fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+            }
+            fs.writeFileSync(STATE_FILE, JSON.stringify(this.data, null, 2));
+            console.log('[State] 狀態已儲存');
+        } catch (e) {
+            console.error('[State] 儲存失敗', e.message);
+        }
+    }
+};
 
 const PriceService = {
     solPrice: 0,
@@ -62,20 +89,24 @@ const NotifyService = {
 
 class MonitorEngine {
     constructor() {
-        this.signatures = new Map();
+        this.newSignaturesFound = false;
     }
 
     async init() {
-        console.log(`🚀 SACKbot 引擎啟動中... (${IS_ACTIONS ? 'Actions 模式' : '長駐模式'})`);
+        console.log(`🚀 SACKbot 啟動... (${IS_ACTIONS ? 'Actions 模式' : '長駐模式'})`);
+        StateService.load();
         await PriceService.updatePrice();
         
+        // 如果是長駐模式且沒有紀錄，先抓取初始值
         if (!IS_ACTIONS) {
             for (const task of CONFIG.tasks) {
-                try {
-                    const sigs = await connection.getSignaturesForAddress(new PublicKey(task.address), { limit: 1 });
-                    if (sigs.length > 0) this.signatures.set(task.address, sigs[0].signature);
-                } catch (e) {
-                    console.error(`[Init] ${task.name} 初始化失敗`, e.message);
+                if (!StateService.data[task.address]) {
+                    try {
+                        const sigs = await connection.getSignaturesForAddress(new PublicKey(task.address), { limit: 1 });
+                        if (sigs.length > 0) StateService.data[task.address] = sigs[0].signature;
+                    } catch (e) {
+                        console.error(`[Init] ${task.name} 初始化失敗`, e.message);
+                    }
                 }
             }
         }
@@ -88,33 +119,30 @@ class MonitorEngine {
         for (const task of CONFIG.tasks) {
             await this.processTask(task);
         }
+
+        // 如果在 Actions 模式下發現新交易，儲存狀態以便後續 Commit
+        if (IS_ACTIONS && this.newSignaturesFound) {
+            StateService.save();
+        }
     }
 
     async processTask(task) {
         try {
             const pubKey = new PublicKey(task.address);
-            const lastSig = this.signatures.get(task.address);
+            const lastSig = StateService.data[task.address];
             
-            // 如果是 Actions，抓取最近 10 分鐘，如果沒 signature 就抓最近 10 筆
             const signatures = await connection.getSignaturesForAddress(pubKey, { 
                 limit: 10,
-                until: IS_ACTIONS ? undefined : lastSig
+                until: lastSig
             });
 
             if (signatures.length === 0) return;
 
-            // 更新最後處理的簽名 (長駐模式用)
-            if (!IS_ACTIONS) {
-                this.signatures.set(task.address, signatures[0].signature);
-            }
+            // 更新最後處理的簽名
+            StateService.data[task.address] = signatures[0].signature;
+            this.newSignaturesFound = true;
 
-            // 過濾舊交易 (Actions 模式專用：只看最近 10 分鐘的交易，避免重複通知)
-            const nowSeconds = Math.floor(Date.now() / 1000);
-            const filteredSigs = IS_ACTIONS 
-                ? signatures.filter(s => (nowSeconds - s.blockTime) < 600) // 10 分鐘內
-                : signatures.reverse(); // 長駐模式從舊到新
-
-            if (filteredSigs.length === 0) return;
+            const filteredSigs = signatures.reverse(); // 由舊到新處理
 
             console.log(`[Task] ${task.name} 檢測到 ${filteredSigs.length} 筆新交易`);
 
@@ -205,10 +233,10 @@ async function main() {
     await engine.init();
 
     if (IS_ACTIONS) {
-        await engine.run(); // Actions 模式只跑一次就結束
-        console.log('✅ Actions 執行完畢');
+        await engine.run();
+        console.log('✅ Actions 掃描完畢');
     } else {
-        setInterval(() => engine.run(), ENV.interval); // 長駐模式持續輪詢
+        setInterval(() => engine.run(), ENV.interval);
     }
 }
 
