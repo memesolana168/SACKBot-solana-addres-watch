@@ -210,16 +210,38 @@ class MonitorEngine {
         }
     }
 
+    // 3. 處理 Swap (SACK 交易)
     async processSwap(task, tx, signature, solPrice) {
         const payer = tx.transaction.message.accountKeys[0].pubkey.toBase58();
         const solDiff = (tx.meta.postBalances[0] - tx.meta.preBalances[0]) / 1e9;
+        
+        // --- 精準判定：這是否為一筆 DEX 交易？ ---
+        // 定義常見的 DEX 程式 ID (Raydium, Jupiter, Pump.fun, Orca 等)
+        const DEX_PROGRAMS = [
+            '675k1q2WmJAgD2uVPN87qc6pBaC46u7Z4j9fF974Wve', // Raydium
+            'JUP6LkbZbjS1jKKpphs6U1f3pPs7d4YfB385yLq8B3r', // Jupiter
+            '6EF8rrecthR5DkwiPGXnTXJXzbcC3MTY77MqeTGLqmfL', // Pump.fun
+            'whirLbMiicVdio4nUfT5MB768CC8MRShPkYxpQidD4g', // Orca
+            '2wTebS75LSEuMuLZpZAVvQQL7gNInS6pDCNYAnF6Xy7o'  // Meteora
+        ];
+
+        // 檢查交易中是否包含任何 DEX 協議地址
+        const isDexTrade = tx.transaction.message.accountKeys.some(k => 
+            DEX_PROGRAMS.includes(typeof k.pubkey === 'string' ? k.pubkey : k.pubkey.toBase58())
+        );
+
+        if (!isDexTrade || Math.abs(solDiff) < 0.001) {
+            // 如果不是 DEX 交易，或者 SOL 變動過小（可能是手續費），則視為普通轉帳並略過
+            return;
+        }
+
         const sackAccount = tx.meta.postTokenBalances.find(tb => tb.owner === payer && tb.mint === task.address);
         if (!sackAccount) return;
         const preSack = tx.meta.preTokenBalances.find(tb => tb.accountIndex === sackAccount.accountIndex);
         const preAmt = preSack ? preSack.uiTokenAmount.uiAmount : 0;
         const postAmt = sackAccount.uiTokenAmount.uiAmount;
         const sackDiff = postAmt - preAmt;
-        if (sackDiff === 0 || solDiff === 0) return;
+        if (sackDiff === 0) return;
         const usdValue = Math.abs(solDiff) * solPrice;
         if (task.minUSD > 0 && usdValue < task.minUSD) return;
         const isBuy = sackDiff > 0;
