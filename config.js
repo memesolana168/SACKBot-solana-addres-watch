@@ -17,28 +17,28 @@ module.exports = {
     // 監控任務清單
     tasks: [
         {
-            name: '💰 金庫監控',
+            name: 'SACK金庫監控',
             address: 'SACKKQcRPAVAMVXZNLyH9avG9sdfYW2iE3Nw2te7Lj7',
             type: 'SOL_INFLOW',
             minUSD: 0,
         },
         {
-            name: '🖨️ 發幣器動作',
+            name: 'SACK發幣器動作',
             address: 'SACKsfkq2BoUELVv8PZ8LhnMfQ4rorFAJbCZWi6eVLQ',
             type: 'TOKEN_OUTFLOW',
             minUSD: 0,
         },
         {
-            name: '📈 SACK 交易 ',
+            name: 'SACK 交易 ',
             address: 'Sack7bZAMtwVU1ceMwV6V293GXCyBtkhQNYYUGAWMqu',
             type: 'SWAP',
             minUSD: 0, // 只要改這裡：美金門檻
         },
         {
-            name: '📈 GEOD 交易 (大額)',
+            name: 'GEOD 交易 (大額)',
             address: '5sgFJxh1oewHjBvnkRY9qMau8pCLDfxCzFjCMJAGKke5',
             type: 'SOL_TRANSFER',
-            minUSD: 100, // 只要改這裡：美金門檻
+            minUSD: 10, // 只要改這裡：美金門檻
         },
     ]
 };
