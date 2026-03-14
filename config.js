@@ -54,14 +54,8 @@ module.exports = {
             minUSD: 0,
         },
         {
-            name: 'SACK/sol 交易',
+            name: 'SACK 交易',
             address: 'Sack7bZAMtwVU1ceMwV6V293GXCyBtkhQNYYUGAWMqu',
-            type: 'SWAP',
-            minUSD: 0,
-        },
-        {
-            name: 'SACK/usdc 交易',
-            address: 'f25uh5ravdhbd7phlxprtpjnrpann4qcrsvvm2a8cb4',
             type: 'SWAP',
             minUSD: 0,
         },

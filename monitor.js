@@ -99,10 +99,25 @@ class MonitorEngine {
         console.log(`🚀 SACKbot v2.6 啟動 (全域 Mint 監控模式)`);
         StateService.load();
         await PriceService.updatePrice();
+        
         for (const task of CONFIG.tasks) {
-            if (!StateService.data[task.address]) {
-                const sigs = await connection.getSignaturesForAddress(new PublicKey(task.address), { limit: 1 });
-                if (sigs.length > 0) StateService.data[task.address] = sigs[0].signature;
+            try {
+                if (!task.address || task.address.length < 32) {
+                    throw new Error(`地址長度不足或為空: ${task.address}`);
+                }
+                
+                const pubKey = new PublicKey(task.address);
+                if (!StateService.data[task.address]) {
+                    console.log(`[Init] 正在追蹤新地址: ${task.name}...`);
+                    const sigs = await connection.getSignaturesForAddress(pubKey, { limit: 1 });
+                    if (sigs.length > 0) StateService.data[task.address] = sigs[0].signature;
+                }
+            } catch (e) {
+                console.error(`\n❌ [Init] 任務 "${task.name}" 地址無效，已自動跳過！`);
+                console.error(`   原因: ${e.message}`);
+                console.error(`   提示: 請檢查地址是否包含非法字元 (0, O, I, l) 或長度是否正確。\n`);
+                // 標記為無效，避免 processTask 再次報錯
+                task.invalid = true;
             }
         }
     }
@@ -111,6 +126,7 @@ class MonitorEngine {
         console.log(`\n--- 掃描中 (${new Date().toLocaleTimeString()}) ---`);
         await PriceService.updatePrice();
         for (const task of CONFIG.tasks) {
+            if (task.invalid) continue; // 跳過無效地址
             await this.processTask(task);
         }
         if (this.newSignaturesFound) StateService.save();
@@ -143,10 +159,12 @@ class MonitorEngine {
             const payerInfo = AddressBookService.get(payer);
             if (payerInfo && payerInfo.silent) return;
 
+            // 分流處理不同任務類型
             if (task.type === 'SWAP') {
                 await this.analyzeSwap(task, tx, signature, payer);
-            } else {
-                // 處理 SOL_INFLOW 等其他類型...
+            } else if (task.type === 'TOKEN_OUTFLOW') {
+                await this.processTokenOutflow(task, tx, signature);
+            } else if (task.type === 'SOL_INFLOW' || task.type === 'SOL_TRANSFER') {
                 const accountIndex = tx.transaction.message.accountKeys.findIndex(k => k.pubkey.toBase58() === task.address);
                 if (accountIndex !== -1) {
                     const diff = (tx.meta.postBalances[accountIndex] - tx.meta.preBalances[accountIndex]) / 1e9;
@@ -154,6 +172,29 @@ class MonitorEngine {
                 }
             }
         } catch (e) { console.error(`[TX] 失敗 ${signature.slice(0, 8)}:`, e.message); }
+    }
+
+    async processTokenOutflow(task, tx, signature) {
+        const preToken = tx.meta.preTokenBalances || [];
+        const postToken = tx.meta.postTokenBalances || [];
+        
+        // 找出誰是接收者 (餘額增加了，且不是監控地址本人)
+        for (const post of postToken) {
+            if (post.owner === task.address) continue;
+            
+            const pre = preToken.find(p => p.accountIndex === post.accountIndex && p.mint === post.mint);
+            const preAmt = pre ? (pre.uiTokenAmount.uiAmount || 0) : 0;
+            const postAmt = post.uiTokenAmount.uiAmount || 0;
+            
+            if (postAmt > preAmt) {
+                const amount = postAmt - preAmt;
+                const tokenSymbol = task.name.split(' ')[0] || post.mint.slice(0, 4);
+                const recipient = AddressBookService.format(post.owner);
+                
+                const msg = `<b>📦 ${task.name} 代幣流出</b>\n━━━━━━━━━━━━━━━━━━\n<b>行為:</b> 🏗️ 分發代幣\n<b>數量:</b> ${amount.toLocaleString()} ${tokenSymbol}\n<b>接收者:</b> ${recipient}\n<b>交易:</b> <a href="https://solscan.io/tx/${signature}">Solscan</a>`;
+                await NotifyService.send(msg);
+            }
+        }
     }
 
     async analyzeSwap(task, tx, signature, payer) {
@@ -198,7 +239,12 @@ class MonitorEngine {
 
     async notifyTransfer(task, diff, payer, signature) {
         if (task.type === 'SOL_INFLOW' && diff < 0) return;
+        
         const usdValue = Math.abs(diff) * PriceService.solPrice;
+        
+        // 🚀 修正點：加入 minUSD 過濾
+        if (task.minUSD > 0 && usdValue < task.minUSD) return;
+
         const msg = `<b>${task.name}</b>\n━━━━━━━━━━━━━━━━━━\n<b>類型:</b> ${diff > 0 ? '📥 收到 SOL' : '📤 支出 SOL'}\n<b>金額:</b> ${Math.abs(diff).toFixed(3)} SOL (~$${usdValue.toFixed(2)})\n<b>對手:</b> ${AddressBookService.format(payer)}\n<b>交易:</b> <a href="https://solscan.io/tx/${signature}">Solscan</a>`;
         await NotifyService.send(msg);
     }
